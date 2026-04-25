@@ -8,9 +8,9 @@ from __future__ import annotations
 import json
 
 from src.modeling import (
+    BASE_FEATURE_COLUMNS,
     DEFAULT_LINREG_MODEL_PATH,
     DEFAULT_MODEL_PATH,
-    BASE_FEATURE_COLUMNS,
     RAW_FEATURE_COLUMNS,
     TARGET_COLUMN,
     build_baseline_pipeline,
