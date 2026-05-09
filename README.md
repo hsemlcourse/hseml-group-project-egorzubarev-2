@@ -2,7 +2,10 @@
 
 Учебный ML-проект. Задача — регрессия: по характеристикам ноутбука предсказать его розничную цену в рублях.
 
-Данные собираются из каталогов **Citilink** и **DNS**, дедуплицируются по совпадающим спецификациям (без привязки к источнику), сохраняются в `laptops.db` (SQLite) и `data/raw/laptops.csv`. Аналитика, EDA и обучение моделей — в `notebooks/cp1.ipynb`.
+Данные собираются из каталогов **Citilink** и **DNS**, дедуплицируются по совпадающим спецификациям (без привязки к источнику), сохраняются в `laptops.db` (SQLite) и `data/raw/laptops.csv`.
+
+- `notebooks/cp1.ipynb` — EDA, очистка, baseline-модели (Ridge, LinearRegression).
+- `notebooks/cp2.ipynb` — 10 экспериментов с подбором гиперпараметров, PCA, финальная модель (RandomForest, **test MAE = 13 880 руб., R² = 0.924**), feature importance.
 
 ---
 
@@ -118,6 +121,8 @@ python -m src.finalize_dataset
 
 ### 4. Обучение моделей
 
+**CP1 — baseline:**
+
 ```bash
 python -m src.train
 ```
@@ -126,6 +131,17 @@ python -m src.train
 - `models/baseline_ridge.joblib`
 - `models/linreg_raw.joblib`
 - `models/baseline_metrics.json`
+
+**CP2 — эксперименты и финальная модель:**
+
+```bash
+python -m src.experiments
+```
+
+Гоняет 10 конфигураций (LinReg, Ridge, Lasso, KNN, DecisionTree, RandomForest, GradientBoosting, LightGBM, Ridge+PCA) с GridSearch/RandomSearch на 5-fold CV, выбирает лучшую по `MAE_val`, переобучает на `train+val`, мерит на `test`, сохраняет:
+- `models/experiments.csv` — таблица экспериментов
+- `models/experiments.json` — полные метрики и гиперпараметры
+- `models/final_model.joblib` — финальная модель
 
 ### 5. Предсказание цены конкретного ноутбука
 
@@ -164,14 +180,16 @@ python -m src.predict \
 | `--weight_kg` | float | Вес (кг) |
 | `--model` | `ridge`\|`linreg` | Модель (по умолчанию `ridge`) |
 
-### 6. Запуск ноутбука
+### 6. Запуск ноутбуков
 
 ```bash
 jupyter lab
-# открыть notebooks/cp1.ipynb и запустить все ячейки сверху вниз
+# notebooks/cp1.ipynb — EDA + baseline (CP1)
+# notebooks/cp2.ipynb — эксперименты + финал (CP2)
+# запустить все ячейки сверху вниз
 ```
 
-Ноутбук работает поверх уже сохранённых `data/raw/laptops.csv` и `laptops.db` — живой скрейп не нужен.
+Оба ноутбука работают поверх уже сохранённых `data/raw/laptops.csv` и `laptops.db` — живой скрейп не нужен. `cp2.ipynb` независим от `cp1.ipynb`: можно открывать любой.
 
 ---
 
@@ -186,6 +204,17 @@ jupyter lab
 | **Baseline** | `DummyRegressor` (медиана) + Ridge с `OneHotEncoder` и `StandardScaler` |
 | **LinearRegression (raw)** | Линейная регрессия только на сырых признаках, без engineered-колонок |
 | **Сохранение** | `models/baseline_ridge.joblib`, `models/linreg_raw.joblib`, `models/baseline_metrics.json` |
+
+## Описание ноутбука cp2.ipynb
+
+| Секция | Содержание |
+|---|---|
+| **Данные и сплит** | Тот же `train/val/test` 70/15/15, `SEED = 42` — для сопоставимости с CP1 |
+| **10 экспериментов** | Полный прогон `run_all()` из `src/experiments.py`: Linear (raw/FE), Ridge+grid, Lasso+grid, KNN+grid, DecisionTree+grid, RandomForest+random, GradientBoosting, LightGBM+random, Ridge+PCA |
+| **PCA** | Scree-plot накопленной дисперсии, scatter первых 2 PC с раскраской по `log10(price)` |
+| **Финальная модель** | `select_and_finalize()`: лучшая по `MAE_val`, переобучение на `train+val`, метрики на `test`, сохранение в `models/final_model.joblib` |
+| **Интерпретируемость** | Top-15 признаков по `feature_importance` из `RandomForest` с восстановлением имён через `ColumnTransformer.get_feature_names_out()` |
+| **CP1 vs CP2** | Сравнительная таблица: CP1 baseline (Ridge, LinearRegression raw) vs CP2 final (RandomForest) |
 
 ---
 
@@ -261,13 +290,6 @@ jupyter lab
 
 `cp2.ipynb` независим от `cp1.ipynb` и поверх готового `data/raw/laptops.csv` повторяет: сплит → 10 экспериментов → PCA-визуализацию → финальную модель → топ-15 признаков по `feature_importance` → сравнение с CP1.
 
-### Docker Compose
-
-```bash
-docker-compose up --build
-# JupyterLab доступен на http://localhost:8888 без токена
-```
-
 ---
 
 ## Описание модулей `src/`
@@ -317,12 +339,25 @@ ruff check src tests   # линтер
 
 ## Docker
 
+Через `docker-compose` (рекомендуется):
+
 ```bash
-docker build -t laptop-cp1 .
-docker run --rm -p 8888:8888 laptop-cp1
+docker-compose up --build
+# JupyterLab на http://localhost:8888 без токена
 ```
 
-Контейнер поднимает JupyterLab на порту 8888 с установленным Chromium для Playwright.
+Или напрямую через `docker`:
+
+```bash
+docker build -t laptop-prediction .
+docker run --rm -p 8888:8888 laptop-prediction
+```
+
+Контейнер поднимает JupyterLab на порту 8888 с установленным Chromium для Playwright. Для запуска экспериментов внутри контейнера:
+
+```bash
+docker-compose exec notebook python -m src.experiments
+```
 
 ---
 
