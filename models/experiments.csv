@@ -1,0 +1,11 @@
+model,hypothesis,n_features,best_params,mae_val,rmse_val,r2_val,fit_seconds
+RandomForest_random,Bagging-ансамбль усредняет шум одиночного дерева,19,"{""model__n_estimators"": 400, ""model__min_samples_leaf"": 1, ""model__max_features"": 0.5, ""model__max_depth"": 20}",17648.3,37484.2,0.8567,6.04
+GradientBoosting,Sequential boosting лечит ошибки baseline,19,{},18958.9,38930.1,0.8454,2.37
+Ridge_FE_grid,L2 уменьшает variance на разреженной OneHot-матрице,19,"{""model__alpha"": 1.0}",19766.5,37929.3,0.8533,5.01
+Lasso_FE_grid,L1 делает отбор признаков,19,"{""model__alpha"": 10.0}",20657.2,39764.1,0.8387,5.17
+KNN_FE_grid,Похожие по характеристикам ноуты стоят похоже,19,"{""model__n_neighbors"": 5, ""model__weights"": ""distance""}",20964.2,44413.0,0.7988,0.66
+LightGBM_random,Современный GBM — обычно лидер на табличных данных,19,"{""model__num_leaves"": 127, ""model__n_estimators"": 800, ""model__min_child_samples"": 10, ""model__max_depth"": -1, ""model__learning_rate"": 0.1}",21343.2,40606.0,0.8318,51.02
+LinearRegression_FE,Те же FE-фичи помогают линейной модели,19,{},21702.6,40131.2,0.8357,0.02
+LinearRegression_raw,Линейная модель на сырых признаках без FE,11,{},21922.3,40229.1,0.8349,0.02
+DecisionTree_FE_grid,Одно дерево ловит нелинейности,19,"{""model__max_depth"": null, ""model__min_samples_leaf"": 1}",22947.2,44975.9,0.7937,0.46
+Ridge_PCA95,"PCA убирает корреляцию OneHot-фич, сохраняя 95% дисперсии",19,{},23087.5,41219.0,0.8267,0.26
