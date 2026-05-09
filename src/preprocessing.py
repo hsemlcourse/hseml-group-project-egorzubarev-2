@@ -36,7 +36,12 @@ def _extract_resolution_parts(resolution: pd.Series) -> tuple[pd.Series, pd.Seri
 
 def add_engineered_features(dataframe: pd.DataFrame) -> pd.DataFrame:
     result = dataframe.copy()
-    width, height = _extract_resolution_parts(result.get("screen_resolution", pd.Series(dtype=object)))
+    resolution_series = (
+        result["screen_resolution"]
+        if "screen_resolution" in result.columns
+        else pd.Series("", index=result.index, dtype=object)
+    )
+    width, height = _extract_resolution_parts(resolution_series)
     result["resolution_width"] = width
     result["resolution_height"] = height
     result["screen_pixels_mln"] = (width * height) / 1_000_000

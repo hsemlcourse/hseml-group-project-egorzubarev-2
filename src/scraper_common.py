@@ -109,8 +109,10 @@ class LaptopRecord:
     raw_specs: dict[str, Any] = field(default_factory=dict)
 
 
-def clean_text(value: str) -> str:
-    text = re.sub(r"\s+", " ", value.replace("\xa0", " ")).strip()
+def clean_text(value: str | None) -> str:
+    if not value:
+        return ""
+    text = re.sub(r"\s+", " ", str(value).replace("\xa0", " ")).strip()
     return text
 
 

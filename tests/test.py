@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import pandas as pd
 from src.citilink_scraper import build_citilink_record
+from src.dns_scraper import _build_dns_record_from_flattened
 from src.modeling import evaluate_regression
 from src.preprocessing import clean_laptops_dataframe
-from src.scraper_common import LaptopRecord, parse_core_features
+from src.scraper_common import LaptopRecord, clean_text, parse_core_features
 from src.storage import merge_duplicates
 
 
@@ -166,3 +167,25 @@ def test_evaluate_regression_returns_expected_metrics() -> None:
 
     assert set(metrics) == {"mae", "rmse", "r2"}
     assert metrics["mae"] == 10.0
+
+
+def test_clean_text_handles_none_and_non_strings() -> None:
+    assert clean_text(None) == ""
+    assert clean_text("") == ""
+    assert clean_text("  Lenovo\xa0IdeaPad   Slim  ") == "Lenovo IdeaPad Slim"
+
+
+def test_dns_record_returns_none_when_price_is_missing() -> None:
+    card = {"guid": "abc", "href": "/product/x/", "title": "Ноутбук X", "priceText": ""}
+    product = {"guid": "abc", "name": "Ноутбук X", "specs": "", "description": "", "price": None}
+    record = _build_dns_record_from_flattened(card=card, product=product, flattened={})
+
+    assert record.price_rub is None
+
+
+def test_dns_record_falls_back_to_card_price_text() -> None:
+    card = {"guid": "abc", "href": "/product/x/", "title": "Ноутбук X", "priceText": "59 990 ₽"}
+    product = {"guid": "abc", "name": "Ноутбук X", "specs": "", "description": "", "price": 0}
+    record = _build_dns_record_from_flattened(card=card, product=product, flattened={})
+
+    assert record.price_rub == 59_990

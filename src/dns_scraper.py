@@ -19,6 +19,16 @@ def flatten_dns_characteristics(characteristics: dict[str, list[dict[str, Any]]]
     return flattened
 
 
+def _resolve_dns_price(product: dict[str, Any], card: dict[str, Any]) -> int | None:
+    raw_price = product.get("price")
+    if raw_price not in (None, "", 0):
+        try:
+            return int(raw_price)
+        except (TypeError, ValueError):
+            pass
+    return parse_price_rub(card.get("priceText", ""))
+
+
 def _build_dns_record_from_flattened(
     card: dict[str, Any],
     product: dict[str, Any],
@@ -38,7 +48,7 @@ def _build_dns_record_from_flattened(
         source_id=str(product.get("guid") or card["guid"]),
         product_url=make_absolute_url("https://www.dns-shop.ru", card["href"]),
         title=product.get("name") or card["title"],
-        price_rub=int(product.get("price") or parse_price_rub(card["priceText"]) or 0),
+        price_rub=_resolve_dns_price(product, card),
         brand=features.get("brand"),
         screen_diagonal_inch=features.get("screen_diagonal_inch"),
         screen_resolution=features.get("screen_resolution"),

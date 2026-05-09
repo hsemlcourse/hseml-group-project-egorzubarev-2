@@ -14,9 +14,13 @@ Available --model values:
 from __future__ import annotations
 
 import argparse
+import sys
 
 import joblib
 import pandas as pd
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
 
 from src.modeling import DEFAULT_LINREG_MODEL_PATH, DEFAULT_MODEL_PATH
 from src.preprocessing import add_engineered_features
