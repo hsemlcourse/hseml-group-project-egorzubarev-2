@@ -1,6 +1,6 @@
-# CP1: Laptop Price Prediction
+# Laptop Price Prediction (CP1 + CP2)
 
-Проект первого чекпоинта учебного ML-курса. Задача — регрессия: по характеристикам ноутбука предсказать его розничную цену в рублях.
+Учебный ML-проект. Задача — регрессия: по характеристикам ноутбука предсказать его розничную цену в рублях.
 
 Данные собираются из каталогов **Citilink** и **DNS**, дедуплицируются по совпадающим спецификациям (без привязки к источнику), сохраняются в `laptops.db` (SQLite) и `data/raw/laptops.csv`. Аналитика, EDA и обучение моделей — в `notebooks/cp1.ipynb`.
 
@@ -17,11 +17,15 @@
 │   └── processed/
 │       └── laptops_clean.csv         ← очищенный датасет с engineered-признаками
 ├── models/
-│   ├── baseline_ridge.joblib         ← Ridge с feature engineering
-│   ├── linreg_raw.joblib             ← LinearRegression без feature engineering
-│   └── baseline_metrics.json         ← метрики обеих моделей на validation и test
+│   ├── baseline_ridge.joblib         ← CP1: Ridge с feature engineering
+│   ├── linreg_raw.joblib             ← CP1: LinearRegression без FE
+│   ├── baseline_metrics.json         ← CP1: метрики baseline-моделей
+│   ├── final_model.joblib            ← CP2: финальная модель (RandomForest tuned)
+│   ├── experiments.csv               ← CP2: таблица 10 экспериментов
+│   └── experiments.json              ← CP2: метрики и гиперпараметры
 ├── notebooks/
-│   └── cp1.ipynb                     ← основной аналитический ноутбук
+│   ├── cp1.ipynb                     ← CP1: EDA + baseline
+│   └── cp2.ipynb                     ← CP2: 10 моделей, PCA, финал, importance
 ├── src/
 │   ├── project_config.py             ← константы, пути, URL, SEED
 │   ├── http_utils.py                 ← HTTP-сессия с retry/backoff, заголовки
@@ -35,11 +39,15 @@
 │   ├── storage.py                    ← дедупликация, fingerprint, экспорт в SQLite/CSV
 │   ├── preprocessing.py              ← очистка и feature engineering
 │   ├── modeling.py                   ← разбиение, baseline-модели, метрики
-│   ├── train.py                      ← обучение и сохранение обеих моделей
+│   ├── experiments.py                ← CP2: 10 моделей, GridSearch/RandomSearch, PCA, финал
+│   ├── train.py                      ← CP1: обучение и сохранение обеих baseline-моделей
 │   └── predict.py                    ← предсказание цены по характеристикам ноутбука (CLI)
+├── scripts/
+│   └── build_cp2_notebook.py         ← скрипт генерации cp2.ipynb (one-shot, не runtime)
 ├── tests/
-│   └── test.py                       ← 6 unit-тестов
+│   └── test.py                       ← 9 unit-тестов
 ├── Dockerfile
+├── docker-compose.yml                ← jupyter lab на :8888
 ├── pyproject.toml                    ← конфиг Ruff и pytest
 ├── requirements.txt
 ├── laptops.db                        ← SQLite-база (таблица laptops)
@@ -195,6 +203,73 @@ jupyter lab
 
 ---
 
+## CP2: эксперименты, ансамбли и финальная модель
+
+### Запуск всех экспериментов
+
+```bash
+python -m src.experiments
+```
+
+Команда строит тот же `train/val/test` сплит (`SEED=42`), обучает 10 конфигураций моделей с подбором гиперпараметров (5-fold CV, `scoring=neg_MAE`), пишет таблицу в `models/experiments.csv` и `models/experiments.json`, выбирает лучшую по `MAE_val`, переобучает на `train+val`, мерит на `test` и сохраняет в `models/final_model.joblib`.
+
+### Список экспериментов
+
+| # | Имя | Поиск | Гиперпараметры |
+|---|---|---|---|
+| 1 | LinearRegression_raw | — | без FE |
+| 2 | LinearRegression_FE | — | + FE-фичи |
+| 3 | Ridge_FE_grid | Grid | alpha ∈ {0.1…100} |
+| 4 | Lasso_FE_grid | Grid | alpha ∈ {0.1…1000} |
+| 5 | KNN_FE_grid | Grid | n_neighbors, weights |
+| 6 | DecisionTree_FE_grid | Grid | max_depth, min_samples_leaf |
+| 7 | RandomForest_random | Random (10) | n_estimators, max_depth, min_samples_leaf, max_features |
+| 8 | GradientBoosting | — | n_estimators=400, lr=0.05 |
+| 9 | LightGBM_random | Random (15) | n_estimators, lr, max_depth, num_leaves, min_child_samples |
+| 10 | Ridge_PCA95 | — | PCA до 95% дисперсии + Ridge |
+
+### Таблица результатов (отсортирована по MAE_val)
+
+| Модель | MAE val | RMSE val | R² val | Best params |
+|---|---:|---:|---:|---|
+| **RandomForest_random** | **17 648** | 37 484 | 0.857 | `n_estimators=400, max_depth=20, min_samples_leaf=1, max_features=0.5` |
+| GradientBoosting | 18 959 | 38 930 | 0.845 | (default 400 / lr=0.05 / depth=4) |
+| Ridge_FE_grid | 19 767 | 37 929 | 0.853 | `alpha=1.0` |
+| Lasso_FE_grid | 20 657 | 39 764 | 0.839 | `alpha=10.0` |
+| KNN_FE_grid | 20 964 | 44 413 | 0.799 | `n_neighbors=5, weights=distance` |
+| LightGBM_random | 21 343 | 40 606 | 0.832 | `n_estimators=800, lr=0.1, num_leaves=127` |
+| LinearRegression_FE | 21 703 | 40 131 | 0.836 | — |
+| LinearRegression_raw | 21 922 | 40 229 | 0.835 | — |
+| DecisionTree_FE_grid | 22 947 | 44 976 | 0.794 | `max_depth=None, min_samples_leaf=1` |
+| Ridge_PCA95 | 23 088 | 41 219 | 0.827 | (PCA до 95%) |
+
+### Финальная модель
+
+| Стадия | MAE | RMSE | R² |
+|---|---:|---:|---:|
+| Validation | 17 648 | 37 484 | 0.857 |
+| **Test** | **13 880** | **23 988** | **0.924** |
+
+**RandomForest** уверенно бьёт CP1 baseline-Ridge (~−5 000 руб. MAE на test). Линейные модели не ловят нелинейные взаимодействия (бренд × GPU × RAM → premium-цена), один DecisionTree переобучается, KNN страдает от высокой размерности после OneHot, LightGBM на 1.5k наблюдений чуть нестабильнее. PCA сохраняет 95% дисперсии в десятках компонент, но для линейных моделей здесь не помогает — теряется структура категорий. PCA полезнее как 2D-визуализация в `cp2.ipynb`.
+
+### Воспроизведение в ноутбуке
+
+```bash
+jupyter lab
+# открыть notebooks/cp2.ipynb и запустить все ячейки сверху вниз
+```
+
+`cp2.ipynb` независим от `cp1.ipynb` и поверх готового `data/raw/laptops.csv` повторяет: сплит → 10 экспериментов → PCA-визуализацию → финальную модель → топ-15 признаков по `feature_importance` → сравнение с CP1.
+
+### Docker Compose
+
+```bash
+docker-compose up --build
+# JupyterLab доступен на http://localhost:8888 без токена
+```
+
+---
+
 ## Описание модулей `src/`
 
 | Модуль | За что отвечает |
@@ -211,6 +286,7 @@ jupyter lab
 | `storage.py` | SHA-256 fingerprint, `merge_duplicates`, запись в CSV и SQLite |
 | `preprocessing.py` | `load_raw_dataset`, `clean_laptops_dataframe`, `add_engineered_features` |
 | `modeling.py` | `split_dataset`, `build_preprocessor`, `build_baseline_pipeline`, `build_linreg_raw_pipeline`, `evaluate_regression`, `fit_and_score`, `save_model` |
+| `experiments.py` | CP2: 10 моделей с GridSearch/RandomSearch, PCA, выбор финальной модели, сохранение в `models/experiments.{csv,json}` и `models/final_model.joblib` |
 | `train.py` | CLI: обучает Ridge + LinearRegression, сохраняет `.joblib` и `baseline_metrics.json` |
 | `predict.py` | CLI: принимает характеристики ноутбука, выводит предсказанную цену |
 
@@ -223,7 +299,7 @@ pytest           # запустить все тесты
 ruff check src tests   # линтер
 ```
 
-В `tests/test.py` 6 unit-тестов:
+В `tests/test.py` 9 unit-тестов:
 
 | Тест | Что проверяет |
 |---|---|
@@ -233,6 +309,9 @@ ruff check src tests   # линтер
 | `test_clean_laptops_dataframe_drops_unreasonable_price_outliers` | Строки с ценой > 1 млн руб. отфильтровываются |
 | `test_build_citilink_record_prefers_catalog_price` | Цена из карточки каталога приоритетнее ошибочной цены со страницы товара |
 | `test_evaluate_regression_returns_expected_metrics` | Функция метрик возвращает `mae`, `rmse`, `r2` с правильными числами |
+| `test_clean_text_handles_none_and_non_strings` | `clean_text` устойчив к `None` и пустым значениям |
+| `test_dns_record_returns_none_when_price_is_missing` | DNS-парсер возвращает `price_rub=None`, а не `0`, если цены нет |
+| `test_dns_record_falls_back_to_card_price_text` | DNS-парсер берёт цену из `priceText` карточки, если `product.price=0` |
 
 ---
 
@@ -254,7 +333,7 @@ Python 3.11. Основные пакеты:
 ```
 beautifulsoup4   lxml          playwright    requests
 pandas           numpy         scikit-learn  joblib
-matplotlib       seaborn       tqdm
+lightgbm         matplotlib    seaborn       tqdm
 jupyterlab       pytest        ruff
 ```
 
